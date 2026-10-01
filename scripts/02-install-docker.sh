@@ -36,7 +36,7 @@ if is_user_in_docker_group; then
 else
     sudo usermod -aG docker "$USER"
     warn "Пользователь $USER добавлен в группу docker."
-    warn "⚠️  ТРЕБУЕТСЯ ПЕРЕЛОГИН (logout/login или reboot) для применения!"
+    warn "ТРЕБУЕТСЯ ПЕРЕЛОГИН (logout/login или reboot) для применения!"
     warn "После перелогина проверьте: docker ps (без sudo)"
 fi
 
