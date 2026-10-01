@@ -1,0 +1,180 @@
+# ═══════════════════════════════════════════════════════════════════
+# ELIS_Vulcan-90 — SCADA для реального мира
+# Единый манифест всех 12 контейнеров экосистемы
+# ═══════════════════════════════════════════════════════════════════
+
+services:
+
+  # ─── ЯДРО: FUXA (SCADA HMI Frontend) ───
+  hmi-frontend:
+    image: frangoteam/fuxa:${FUXA_TAG}
+    container_name: hmi_frontend
+    restart: unless-stopped
+    ports:
+      - "1881:1881"
+    env_file:
+      - ./services/hmi-frontend/.env
+    volumes:
+      - ./services/hmi-frontend/appdata:/usr/src/app/FUXA/server/_appdata
+      - ./services/hmi-frontend/db:/usr/src/app/FUXA/server/_db
+      - ./services/hmi-frontend/logs:/usr/src/app/FUXA/server/_logs
+      - ./services/hmi-frontend/images:/usr/src/app/FUXA/server/_images
+    # devices:
+    #   - /dev/arduino:/dev/ttyACM0   # раскомментировать при подключении PLC
+    group_add:
+      - dialout
+    depends_on:
+      - mqtt-broker
+      - influxdb
+
+  # ─── MQTT-БРОКЕР ───
+  mqtt-broker:
+    image: eclipse-mosquitto:${MOSQUITTO_TAG}
+    container_name: mqtt_broker
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    env_file:
+      - ./services/mqtt-broker/.env
+    volumes:
+      - ./services/mqtt-broker/config:/mosquitto/config
+      - ./services/mqtt-broker/data:/mosquitto/data
+      - ./services/mqtt-broker/log:/mosquitto/log
+
+  # ─── МОДУЛЬ АЛГОРИТМОВ НА PYTHON ───
+  logic-engine:
+    build: ./services/logic-engine
+    container_name: logic_engine
+    restart: unless-stopped
+    env_file:
+      - ./services/logic-engine/.env
+    depends_on:
+      - mqtt-broker
+    volumes:
+      - ./services/logic-engine/scripts:/app/scripts
+      - ./services/logic-engine/logs:/app/logs
+
+  # ─── РЕДАКТОР СХЕМ DRAW.IO ───
+  hmi-designer:
+    image: jgraph/drawio:${DRAWIO_TAG}
+    container_name: hmi_designer
+    restart: unless-stopped
+    env_file:
+      - ./services/hmi-designer/.env
+    expose:
+      - "8080"
+    volumes:
+      - ./services/hmi-designer/projects:/data
+
+  # ─── ЗАЩИТНЫЙ ШЛЮЗ NGINX (для Draw.io) ───
+  nginx-auth:
+    image: nginx:${NGINX_TAG}
+    container_name: nginx_auth
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    env_file:
+      - ./services/nginx/.env
+    volumes:
+      - ./services/nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./services/nginx/.htpasswd:/etc/nginx/.htpasswd:ro
+    depends_on:
+      - hmi-designer
+
+  # ─── БАЗА ДАННЫХ ВРЕМЕННЫХ РЯДОВ ───
+  influxdb:
+    image: influxdb:${INFLUXDB_TAG}
+    container_name: influxdb
+    restart: unless-stopped
+    ports:
+      - "8086:8086"
+    env_file:
+      - ./services/influxdb/.env
+    volumes:
+      - ./services/influxdb/data:/var/lib/influxdb2
+      - ./services/influxdb/config:/etc/influxdb2
+
+  # ─── СБОРЩИК ДАННЫХ MQTT → InfluxDB ───
+  telegraf:
+    image: telegraf:${TELEGRAF_TAG}
+    container_name: telegraf
+    restart: unless-stopped
+    env_file:
+      - ./services/telegraf/.env
+    volumes:
+      - ./services/telegraf/telegraf.conf:/etc/telegraf/telegraf.conf:ro
+    depends_on:
+      - mqtt-broker
+      - influxdb
+
+  # ─── ВИЗУАЛИЗАЦИЯ И АНАЛИТИКА (Grafana) ───
+  grafana:
+    image: grafana/grafana-oss:${GRAFANA_TAG}
+    container_name: grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - ./services/grafana/.env
+    volumes:
+      - ./services/grafana/data:/var/lib/grafana
+      - ./services/grafana/provisioning:/etc/grafana/provisioning
+    depends_on:
+      - influxdb
+
+  # ─── LOW-CODE АВТОМАТИЗАЦИЯ (Node-RED) ───
+  node-red:
+    image: nodered/node-red:${NODE_RED_TAG}
+    container_name: node_red
+    restart: unless-stopped
+    ports:
+      - "1880:1880"
+    env_file:
+      - ./services/node-red/.env
+    volumes:
+      - ./services/node-red/data:/data
+    depends_on:
+      - mqtt-broker
+
+  # ─── ЦЕНТР УВЕДОМЛЕНИЙ (Apprise) ───
+  apprise:
+    image: caronc/apprise:${APPRISE_TAG}
+    container_name: apprise
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./services/apprise/.env
+    environment:
+      - APPRISE_STATEFUL_MODE=simple
+      - APPRISE_WORKER_COUNT=1
+    volumes:
+      - ./services/apprise/config:/config
+      - ./services/apprise/attach:/attach
+
+  # ─── МОНИТОРИНГ ДОСТУПНОСТИ (Uptime Kuma) ───
+  uptime-kuma:
+    image: louislam/uptime-kuma:${UPTIME_KUMA_TAG}
+    container_name: uptime_kuma
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    env_file:
+      - ./services/uptime-kuma/.env
+    volumes:
+      - ./services/uptime-kuma/data:/app/data
+
+  # ─── УПРАВЛЕНИЕ DOCKER (Portainer) ───
+  portainer:
+    image: portainer/portainer-ce:${PORTAINER_TAG}
+    container_name: portainer
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+      - "9443:9443"
+    env_file:
+      - ./services/portainer/.env
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./services/portainer/data:/data

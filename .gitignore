@@ -1,0 +1,30 @@
+# Секреты
+.env
+.secrets-*.txt
+.htpasswd-password
+
+# Данные сервисов
+services/*/.env
+services/*/data/
+services/*/logs/
+services/*/appdata/
+services/*/db/
+services/*/projects/
+services/nginx/.htpasswd
+services/nginx/conf.d/*.conf
+
+# Бэкапы
+backups/
+*.tar.gz
+
+# Логи
+*.log
+
+# ОС
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
