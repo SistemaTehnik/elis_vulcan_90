@@ -19,8 +19,8 @@ services:
       - ./services/hmi-frontend/db:/usr/src/app/FUXA/server/_db
       - ./services/hmi-frontend/logs:/usr/src/app/FUXA/server/_logs
       - ./services/hmi-frontend/images:/usr/src/app/FUXA/server/_images
-    # devices:
-    #   - /dev/arduino:/dev/ttyACM0   # раскомментировать при подключении PLC
+    devices:
+      - /dev/arduino:/dev/ttyACM0   # раскомментировать при подключении PLC
     group_add:
       - dialout
     depends_on:
