@@ -28,3 +28,14 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+
+# Служебные копии и локальные материалы
+**/.backups/
+**/.env.before-*
+*.bak-*
+*.backup
+*.tar
+/compose.fuxa-test.yml
+
+# Локальные настройки Apprise до проверки содержимого
+/services/apprise/
