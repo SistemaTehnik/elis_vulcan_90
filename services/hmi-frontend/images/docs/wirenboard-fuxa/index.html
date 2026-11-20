@@ -1,0 +1,651 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Интеграция SCADA FUXA с контроллерами Wiren Board — ELIS Vulcan-90</title>
+<style>
+:root { color-scheme: light; --ink:#243746; --blue:#1769aa; --line:#d6e0e7; --panel:#f1f6fa; }
+* { box-sizing:border-box; } body { margin:0; font:16px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif; color:var(--ink); background:#edf2f5; }
+header { background:#18384d; color:#fff; padding:24px max(22px,calc((100vw - 1080px)/2)); } header h1 { margin:0 0 6px; font-size:clamp(23px,3vw,34px); line-height:1.2; } header p { margin:0; opacity:.86; }
+main { max-width:1080px; margin:24px auto; padding:0 22px 48px; } .adapt { background:#fff8e6; border:1px solid #ead28d; border-left:5px solid #d39818; border-radius:6px; padding:16px 20px; margin-bottom:22px; } .adapt h2 { margin:0 0 8px; font-size:19px; } .adapt p { margin:6px 0; }
+article { background:#fff; border:1px solid var(--line); border-radius:8px; padding:clamp(18px,4vw,42px); } article h2 { margin-top:1.6em; border-bottom:1px solid var(--line); padding-bottom:6px; } article h3 { margin-top:1.35em; } article table { border-collapse:collapse; max-width:100%; display:block; overflow:auto; } article td,article th { border:1px solid #c6d1d9; padding:7px 10px; } article th { background:#eef3f6; } article pre { white-space:pre-wrap; overflow:auto; background:#1f2933; color:#f1f5f8; padding:14px; border-radius:6px; } article code { background:#edf2f5; padding:1px 4px; border-radius:3px; } article pre code { background:transparent; padding:0; } article img { max-width:100%; height:auto; border:1px solid var(--line); border-radius:4px; } article a { color:var(--blue); overflow-wrap:anywhere; } .source { font-size:14px; color:#526777; }
+</style>
+</head>
+<body>
+<header><h1>Интеграция SCADA FUXA с контроллерами Wiren Board</h1><p>Локальная копия статьи Wiren Board для ELIS Vulcan-90</p></header>
+<main>
+<section class="adapt">
+<h2>Как применить статью в ELIS Vulcan-90</h2>
+<p>Статья ниже описывает подключение FUXA к контроллеру Wiren Board через MQTT. В ELIS FUXA уже запускается отдельным Docker-сервисом <code>hmi-frontend</code> и открывается на порту <code>1881</code>; устанавливать второй экземпляр FUXA на Wiren Board по инструкции не нужно.</p>
+<p>В статье приведён пример <code>mqtt://127.0.0.1:1883</code> для случая, когда FUXA и брокер находятся в одном сетевом пространстве. В Docker-контейнере ELIS адрес <code>127.0.0.1</code> указывает на сам контейнер FUXA. Для прямого соединения выберите MQTT-брокер Wiren Board, доступный по сети, и укажите его IP/имя и порт 1883. Локальный брокер ELIS <code>mqtt-broker</code> — отдельный сервис; топики Wiren Board не появятся в нём без отдельно настроенного обмена/моста.</p>
+<p>Примеры публикации команд из статьи являются образцами настройки. Перед включением записи проверьте топик, права брокера, тип данных и фактическое назначение команды. Эта локальная копия ничего не меняет в работающей конфигурации FUXA.</p>
+<p class="source">Сохранённая статья: <a href="https://wiki.wirenboard.com/wiki/Scada-fuxa">официальная Wiki Wiren Board</a>. Источник добавлен в проект отдельно от инструкций ELIS.</p>
+</section>
+<article>
+<div id="mw-content-text" class="mw-body-content"><div class="mw-content-ltr mw-parser-output" lang="ru" dir="ltr"><div class="mw-pt-languages noprint navigation-not-searchable" lang="ru" dir="ltr"><div class="mw-pt-languages-label">Другие языки:</div><ul class="mw-pt-languages-list"><li><a href="https://wiki.wirenboard.com/wiki/Scada-fuxa/en" class="mw-pt-progress mw-pt-progress--high" title="Scada-fuxa (92% переведено)" lang="en" dir="ltr">English</a></li>
+<li><span class="mw-pt-languages-ui mw-pt-languages-selected mw-pt-progress mw-pt-progress--complete" lang="ru" dir="ltr">русский</span></li></ul></div>
+<figure class="mw-halign-right" typeof="mw:File/Thumb"><a href="https://wiki.wirenboard.com/wiki/index.php?title=%D0%A4%D0%B0%D0%B9%D0%BB:Scada_fuxa_logo.jpg&amp;filetimestamp=20260317170114&amp;" class="mw-file-description"><img src="media/Scada_fuxa_logo.jpg" decoding="async" width="280" height="278" class="mw-file-element" data-file-width="280" data-file-height="278"></a><figcaption> Лого SCADA FUXA</figcaption></figure>
+<p>В данном руководстве рассматривается процесс развертывания и настройки веб-ориентированной системы визуализации FUXA для работы с оборудованием Wiren Board через протокол MQTT.
+</p>
+<div id="toc" class="toc" role="navigation" aria-labelledby="mw-toc-heading"><input type="checkbox" role="button" id="toctogglecheckbox" class="toctogglecheckbox webfonts-changed" style="display:none" aria-label="Скрыть содержание"><div class="toctitle" lang="ru" dir="ltr"><h2 id="mw-toc-heading">Содержание</h2><span class="toctogglespan"><label class="toctogglelabel" for="toctogglecheckbox"></label></span></div>
+<ul>
+<li class="toclevel-1 tocsection-1"><a href="https://wiki.wirenboard.com/wiki/Scada-fuxa#%D0%9E_SCADA_FUXA"><span class="tocnumber">1</span> <span class="toctext">О SCADA FUXA</span></a></li>
+<li class="toclevel-1 tocsection-2"><a href="https://wiki.wirenboard.com/wiki/Scada-fuxa#%D0%A3%D1%81%D1%82%D0%B0%D0%BD%D0%BE%D0%B2%D0%BA%D0%B0_%D1%81_%D0%BF%D0%BE%D0%BC%D0%BE%D1%89%D1%8C%D1%8E_Docker"><span class="tocnumber">2</span> <span class="toctext">Установка с помощью Docker</span></a></li>
+<li class="toclevel-1 tocsection-3"><a href="https://wiki.wirenboard.com/wiki/Scada-fuxa#%D0%97%D0%B0%D0%BF%D1%83%D1%81%D0%BA_%D0%BA%D0%BE%D0%BD%D1%84%D0%B8%D0%B3%D1%83%D1%80%D0%B0%D1%82%D0%BE%D1%80%D0%B0_%D0%B8_%D0%BD%D0%B0%D1%81%D1%82%D1%80%D0%BE%D0%B9%D0%BA%D0%B0"><span class="tocnumber">3</span> <span class="toctext">Запуск конфигуратора и настройка</span></a>
+<ul>
+<li class="toclevel-2 tocsection-4"><a href="https://wiki.wirenboard.com/wiki/Scada-fuxa#%D0%92%D1%85%D0%BE%D0%B4_%D0%B2_%D0%B8%D0%BD%D1%82%D0%B5%D1%80%D1%84%D0%B5%D0%B9%D1%81"><span class="tocnumber">3.1</span> <span class="toctext">Вход в интерфейс</span></a></li>
+<li class="toclevel-2 tocsection-5"><a href="https://wiki.wirenboard.com/wiki/Scada-fuxa#%D0%9F%D0%B5%D1%80%D0%B5%D1%85%D0%BE%D0%B4_%D0%B2_%D1%80%D0%B5%D0%B6%D0%B8%D0%BC_Editor"><span class="tocnumber">3.2</span> <span class="toctext">Переход в режим Editor</span></a></li>
+</ul>
+</li>
+<li class="toclevel-1 tocsection-6"><a href="https://wiki.wirenboard.com/wiki/Scada-fuxa#%D0%A1%D0%BE%D0%B7%D0%B4%D0%B0%D0%BD%D0%B8%D0%B5_%D0%B8%D1%81%D1%82%D0%BE%D1%87%D0%BD%D0%B8%D0%BA%D0%B0_%D0%B4%D0%B0%D0%BD%D0%BD%D1%8B%D1%85_(%D0%BF%D0%BE%D0%B4%D0%BA%D0%BB%D1%8E%D1%87%D0%B5%D0%BD%D0%B8%D0%B5_%D0%B1%D1%80%D0%BE%D0%BA%D0%B5%D1%80%D0%B0_MQTT)"><span class="tocnumber">4</span> <span class="toctext">Создание источника данных (подключение брокера MQTT)</span></a></li>
+<li class="toclevel-1 tocsection-7"><a href="https://wiki.wirenboard.com/wiki/Scada-fuxa#%D0%94%D0%BE%D0%B1%D0%B0%D0%B2%D0%BB%D0%B5%D0%BD%D0%B8%D0%B5_%D1%82%D0%B5%D0%B3%D0%BE%D0%B2_(%D0%BF%D0%BE%D0%B4%D0%BF%D0%B8%D1%81%D0%BA%D0%B0_%D0%BD%D0%B0_%D1%82%D0%BE%D0%BF%D0%B8%D0%BA%D0%B8_MQTT)"><span class="tocnumber">5</span> <span class="toctext">Добавление тегов (подписка на топики MQTT)</span></a>
+<ul>
+<li class="toclevel-2 tocsection-8"><a href="https://wiki.wirenboard.com/wiki/Scada-fuxa#%D0%A2%D0%B5%D0%B3_%D0%B4%D0%BB%D1%8F_%D0%BF%D0%BE%D0%B4%D0%BF%D0%B8%D1%81%D0%BA%D0%B8_%D0%BD%D0%B0_%D1%82%D0%BE%D0%BF%D0%B8%D0%BA"><span class="tocnumber">5.1</span> <span class="toctext">Тег для подписки на топик</span></a></li>
+<li class="toclevel-2 tocsection-9"><a href="https://wiki.wirenboard.com/wiki/Scada-fuxa#%D0%A2%D0%B5%D0%B3_%D0%B4%D0%BB%D1%8F_%D0%BF%D1%83%D0%B1%D0%BB%D0%B8%D0%BA%D0%B0%D1%86%D0%B8%D0%B8_%D0%B2_%D1%82%D0%BE%D0%BF%D0%B8%D0%BA"><span class="tocnumber">5.2</span> <span class="toctext">Тег для публикации в топик</span></a></li>
+</ul>
+</li>
+<li class="toclevel-1 tocsection-10"><a href="https://wiki.wirenboard.com/wiki/Scada-fuxa#%D0%A1%D0%BE%D0%B7%D0%B4%D0%B0%D0%BD%D0%B8%D0%B5_SCADA-%D0%BF%D0%B0%D0%BD%D0%B5%D0%BB%D0%B8"><span class="tocnumber">6</span> <span class="toctext">Создание SCADA-панели</span></a>
+<ul>
+<li class="toclevel-2 tocsection-11"><a href="https://wiki.wirenboard.com/wiki/Scada-fuxa#%D0%A8%D0%B0%D0%B3_1:_%D0%94%D0%BE%D0%B1%D0%B0%D0%B2%D0%BB%D0%B5%D0%BD%D0%B8%D0%B5_%D0%B8%D0%BD%D0%B4%D0%B8%D0%BA%D0%B0%D1%82%D0%BE%D1%80%D0%B0_%D1%82%D0%B5%D0%BC%D0%BF%D0%B5%D1%80%D0%B0%D1%82%D1%83%D1%80%D1%8B_CPU"><span class="tocnumber">6.1</span> <span class="toctext">Шаг 1: Добавление индикатора температуры CPU</span></a></li>
+<li class="toclevel-2 tocsection-12"><a href="https://wiki.wirenboard.com/wiki/Scada-fuxa#%D0%A8%D0%B0%D0%B3_2:_%D0%94%D0%BE%D0%B1%D0%B0%D0%B2%D0%BB%D0%B5%D0%BD%D0%B8%D0%B5_%D0%BF%D0%B5%D1%80%D0%B5%D0%BA%D0%BB%D1%8E%D1%87%D0%B0%D1%82%D0%B5%D0%BB%D1%8F_%D0%B4%D0%BB%D1%8F_%D0%B7%D1%83%D0%BC%D0%BC%D0%B5%D1%80%D0%B0_(Buzzer)"><span class="tocnumber">6.2</span> <span class="toctext">Шаг 2: Добавление переключателя для зуммера (Buzzer)</span></a></li>
+</ul>
+</li>
+<li class="toclevel-1 tocsection-13"><a href="https://wiki.wirenboard.com/wiki/Scada-fuxa#%D0%97%D0%B0%D0%BF%D1%83%D1%81%D0%BA_%D0%B8_%D1%82%D0%B5%D1%81%D1%82%D0%B8%D1%80%D0%BE%D0%B2%D0%B0%D0%BD%D0%B8%D0%B5"><span class="tocnumber">7</span> <span class="toctext">Запуск и тестирование</span></a></li>
+<li class="toclevel-1 tocsection-14"><a href="https://wiki.wirenboard.com/wiki/Scada-fuxa#%D0%9D%D0%B0%D0%B2%D0%B8%D0%B3%D0%B0%D1%86%D0%B8%D1%8F_%D0%B8_%D0%BF%D1%80%D1%8F%D0%BC%D1%8B%D0%B5_%D1%81%D1%81%D1%8B%D0%BB%D0%BA%D0%B8"><span class="tocnumber">8</span> <span class="toctext">Навигация и прямые ссылки</span></a>
+<ul>
+<li class="toclevel-2 tocsection-15"><a href="https://wiki.wirenboard.com/wiki/Scada-fuxa#%D0%9E%D1%82%D0%BA%D1%80%D1%8B%D1%82%D0%B8%D0%B5_%D1%81%D1%82%D1%80%D0%B0%D0%BD%D0%B8%D1%86%D1%8B_%D0%BF%D0%BE_URL"><span class="tocnumber">8.1</span> <span class="toctext">Открытие страницы по URL</span></a></li>
+</ul>
+</li>
+<li class="toclevel-1 tocsection-16"><a href="https://wiki.wirenboard.com/wiki/Scada-fuxa#%D0%94%D0%BE%D0%BF%D0%BE%D0%BB%D0%BD%D0%B8%D1%82%D0%B5%D0%BB%D1%8C%D0%BD%D1%8B%D0%B5_%D0%BD%D0%B0%D1%81%D1%82%D1%80%D0%BE%D0%B9%D0%BA%D0%B8_%D0%B8%D0%BD%D1%82%D0%B5%D1%80%D1%84%D0%B5%D0%B9%D1%81%D0%B0"><span class="tocnumber">9</span> <span class="toctext">Дополнительные настройки интерфейса</span></a>
+<ul>
+<li class="toclevel-2 tocsection-17"><a href="https://wiki.wirenboard.com/wiki/Scada-fuxa#%D0%9A%D0%BD%D0%BE%D0%BF%D0%BA%D0%B8_%D0%BD%D0%B0_%D0%B1%D0%BE%D0%BA%D0%BE%D0%B2%D0%BE%D0%B9_%D0%B8_%D0%B2%D0%B5%D1%80%D1%85%D0%BD%D0%B5%D0%B9_%D0%BF%D0%B0%D0%BD%D0%B5%D0%BB%D1%8F%D1%85"><span class="tocnumber">9.1</span> <span class="toctext">Кнопки на боковой и верхней панелях</span></a></li>
+<li class="toclevel-2 tocsection-18"><a href="https://wiki.wirenboard.com/wiki/Scada-fuxa#%D0%9A%D0%BD%D0%BE%D0%BF%D0%BA%D0%B8_%D0%BD%D0%B0_%D1%81%D1%82%D1%80%D0%B0%D0%BD%D0%B8%D1%86%D0%B5"><span class="tocnumber">9.2</span> <span class="toctext">Кнопки на странице</span></a></li>
+</ul>
+</li>
+<li class="toclevel-1 tocsection-19"><a href="https://wiki.wirenboard.com/wiki/Scada-fuxa#%D0%9E%D0%BF%D1%82%D0%B8%D0%BC%D0%B8%D0%B7%D0%B0%D1%86%D0%B8%D1%8F_%D0%B4%D0%BB%D1%8F_%D0%BF%D0%BB%D0%B0%D0%BD%D1%88%D0%B5%D1%82%D0%BE%D0%B2"><span class="tocnumber">10</span> <span class="toctext">Оптимизация для планшетов</span></a>
+<ul>
+<li class="toclevel-2 tocsection-20"><a href="https://wiki.wirenboard.com/wiki/Scada-fuxa#Fully_Kiosk_Browser_(Android)"><span class="tocnumber">10.1</span> <span class="toctext">Fully Kiosk Browser (Android)</span></a></li>
+</ul>
+</li>
+<li class="toclevel-1 tocsection-21"><a href="https://wiki.wirenboard.com/wiki/Scada-fuxa#%D0%9F%D0%BE%D0%BB%D0%B5%D0%B7%D0%BD%D1%8B%D0%B5_%D1%81%D1%81%D1%8B%D0%BB%D0%BA%D0%B8"><span class="tocnumber">11</span> <span class="toctext">Полезные ссылки</span></a></li>
+</ul>
+</div>
+
+<h2><span id=".D0.9E_SCADA_FUXA"></span><span class="mw-headline" id="О_SCADA_FUXA">О SCADA FUXA</span></h2>
+<figure class="mw-halign-right" typeof="mw:File/Thumb"><a href="https://wiki.wirenboard.com/wiki/index.php?title=%D0%A4%D0%B0%D0%B9%D0%BB:Fuxa-editor-example-hmi.png&amp;filetimestamp=20260317223255&amp;" class="mw-file-description"><img src="media/300px-Fuxa-editor-example-hmi.png" decoding="async" width="300" height="185" class="mw-file-element" data-file-width="1651" data-file-height="1018"></a><figcaption> Пример панели управления FUXA</figcaption></figure>
+<p>SCADA FUXA - это современная веб-ориентированная SCADA/HMI-платформа для автоматизации, визуализации процессов и Интернета вещей (IoT).
+</p><p>В зависимости от задач можно установить сервер FUXA непосредственно на контроллер Wiren Board или развернуть его на внешнем ПК/сервере, подключаясь к контроллерам удалённо.
+</p><p>Основной способ обмена данными с контроллерами Wiren Board — встроенный MQTT-брокер. Помимо MQTT, FUXA поддерживает протоколы Modbus RTU/TCP, OPC UA, BACnet, Siemens S7, а также работу с базами данных (SQLite, InfluxDB и др.).
+</p><p>Основные плюсы данной системы по отношению к другим SCADA:
+</p>
+<ul><li>интеграция со многими протоколами, включая MQTT, для работы с контроллерами Wiren Board;</li>
+<li>открытые исходники;</li>
+<li>бесплатная;</li>
+<li>удобство работы: Создание дашбордов, настройка логики и управление интерфейсом происходят прямо в браузере (не нужно устанавливать тяжелые десктопные редакторы).</li></ul>
+<p>Процесс ознакомления с FUXA состоит из следующих шагов:
+</p>
+<ol><li>Установим FUXA на контроллер.</li>
+<li>Выполним первоначальную настройку среды и подключимся к локальному MQTT-брокеру.</li>
+<li>Научимся добавлять теги и подписываться на топики.</li>
+<li>Создадим первую интерактивную панель управления (выведем температуру CPU и настроим кнопку управления зуммером).</li></ol>
+<h2><span id=".D0.A3.D1.81.D1.82.D0.B0.D0.BD.D0.BE.D0.B2.D0.BA.D0.B0_.D1.81_.D0.BF.D0.BE.D0.BC.D0.BE.D1.89.D1.8C.D1.8E_Docker"></span><span class="mw-headline" id="Установка_с_помощью_Docker">Установка с помощью Docker</span></h2>
+<p>Установочный пакет FUXA по умолчанию не идёт в комплекте с контроллером <a href="https://wiki.wirenboard.com/wiki/Documentation" title="Documentation"> Wiren Board</a>.
+</p><p>Лучше всего использовать Docker для установки с изоляцией сервисов.
+</p><p>Для этого предварительно нужно установить Docker на контроллер — об этом можно прочесть тут:
+</p>
+<ul><li><a href="https://wiki.wirenboard.com/wiki/Docker" title="Docker"> Установка Docker на контроллер Wiren Board</a></li></ul>
+<p>Далее одной командой установить и запустить FUXA на 1881 порту:
+</p>
+<div class="mw-highlight mw-highlight-lang-console mw-content-ltr" dir="ltr"><pre style="position: relative;"><span></span><span class="gp"># </span>docker<span class="w"> </span>run<span class="w"> </span>-d<span class="w"> </span>-p<span class="w"> </span><span class="m">1881</span>:1881<span class="w"> </span>frangoteam/fuxa:latest
+<button type="button" style="position: absolute; top: 4px; right: 4px; font-style: normal; font-variant: normal; font-size-adjust: none; font-language-override: normal; font-kerning: auto; font-optical-sizing: auto; font-feature-settings: normal; font-variation-settings: normal; font-weight: normal; font-stretch: normal; font-size: 12px; line-height: normal; padding: 2px 8px; border: 1px solid rgb(162, 169, 177); border-radius: 2px; background: rgb(248, 249, 250); cursor: pointer; opacity: 0.75;" class="webfonts-changed">Копировать</button></pre></div>
+<p>После этого решение уже будет запущено и готово к работе - можно переходить к этапу <a href="https://wiki.wirenboard.com/wiki/Scada-fuxa#%D0%97%D0%B0%D0%BF%D1%83%D1%81%D0%BA_%D0%BA%D0%BE%D0%BD%D1%84%D0%B8%D0%B3%D1%83%D1%80%D0%B0%D1%82%D0%BE%D1%80%D0%B0_%D0%B8_%D0%BD%D0%B0%D1%81%D1%82%D1%80%D0%BE%D0%B9%D0%BA%D0%B0">«Запуск конфигуратора и настройка»</a>.
+</p>
+<h2><span id=".D0.97.D0.B0.D0.BF.D1.83.D1.81.D0.BA_.D0.BA.D0.BE.D0.BD.D1.84.D0.B8.D0.B3.D1.83.D1.80.D0.B0.D1.82.D0.BE.D1.80.D0.B0_.D0.B8_.D0.BD.D0.B0.D1.81.D1.82.D1.80.D0.BE.D0.B9.D0.BA.D0.B0"></span><span class="mw-headline" id="Запуск_конфигуратора_и_настройка">Запуск конфигуратора и настройка</span></h2>
+<p>После того как вы завершили установку, нужно зайти в конфигуратор для дальнейшего создания панели управления.
+</p>
+<h3><span id=".D0.92.D1.85.D0.BE.D0.B4_.D0.B2_.D0.B8.D0.BD.D1.82.D0.B5.D1.80.D1.84.D0.B5.D0.B9.D1.81"></span><span class="mw-headline" id="Вход_в_интерфейс">Вход в интерфейс</span></h3>
+<p>Для настройки системы откройте браузер и введите IP-адрес вашего контроллера с портом 1881:
+</p>
+<ul><li><a target="_blank" rel="nofollow noreferrer noopener" class="external free" href="http://192.168.1.10:1881/">http://192.168.1.10:1881</a></li></ul>
+<h3><span id=".D0.9F.D0.B5.D1.80.D0.B5.D1.85.D0.BE.D0.B4_.D0.B2_.D1.80.D0.B5.D0.B6.D0.B8.D0.BC_Editor"></span><span class="mw-headline" id="Переход_в_режим_Editor">Переход в режим Editor</span></h3>
+<p>По умолчанию открывается режим просмотра. Чтобы начать создание проекта:
+</p>
+<ol><li>В левом нижнем углу нажмите на иконку <b>Три полоски</b> (главное меню).</li>
+<li>В открывшемся списке выберите пункт <b>Editor</b>.</li>
+<li>Далее появится внешний вид редактора, где нужно найти кнопку конфига в виде шестеренки:</li></ol>
+<ul class="gallery mw-gallery-packed" style="">
+		<li class="gallerybox" style="width: 246px;">
+			<div class="thumb" style="width: 244px;"><span typeof="mw:File"><a href="https://wiki.wirenboard.com/wiki/index.php?title=%D0%A4%D0%B0%D0%B9%D0%BB:Scada_fuxa_editor_button.png&amp;filetimestamp=20260317200009&amp;" class="mw-file-description" title="Вход в режим Editor"><img alt="Вход в режим Editor" src="media/366px-Scada_fuxa_editor_button.png" decoding="async" width="244" height="200" class="mw-file-element" data-file-width="547" data-file-height="448"></a></span></div>
+			<div class="gallerytext">Вход в режим Editor</div>
+		</li>
+		<li class="gallerybox" style="width: 246.641px;">
+			<div class="thumb" style="width: 245px;"><span typeof="mw:File"><a href="https://wiki.wirenboard.com/wiki/index.php?title=%D0%A4%D0%B0%D0%B9%D0%BB:Scada_fuxa_editor_view.png&amp;filetimestamp=20260317200247&amp;" class="mw-file-description" title="Внешний вид Editor (кнопка шестеренки)"><img alt="Внешний вид Editor (кнопка шестеренки)" src="media/367px-Scada_fuxa_editor_view.png" decoding="async" width="245" height="200" class="mw-file-element" data-file-width="680" data-file-height="556"></a></span></div>
+			<div class="gallerytext">Внешний вид Editor (кнопка шестеренки)</div>
+		</li>
+</ul>
+<h2><span id=".D0.A1.D0.BE.D0.B7.D0.B4.D0.B0.D0.BD.D0.B8.D0.B5_.D0.B8.D1.81.D1.82.D0.BE.D1.87.D0.BD.D0.B8.D0.BA.D0.B0_.D0.B4.D0.B0.D0.BD.D0.BD.D1.8B.D1.85_.28.D0.BF.D0.BE.D0.B4.D0.BA.D0.BB.D1.8E.D1.87.D0.B5.D0.BD.D0.B8.D0.B5_.D0.B1.D1.80.D0.BE.D0.BA.D0.B5.D1.80.D0.B0_MQTT.29"></span><span class="mw-headline" id="Создание_источника_данных_(подключение_брокера_MQTT)">Создание источника данных (подключение брокера MQTT)</span></h2>
+<p>Для взаимодействия FUXA с устройствами Wiren Board необходимо добавить подключение к MQTT-брокеру контроллера.   
+</p>
+<ol><li>В открывшемся окне настроек выбрать <b>Connections</b>.</li>
+<li>Нажмите кнопку <b>«+»</b> в нижней части экрана для добавления нового соединения.</li>
+<li>Среди доступных подключений выбрать Mqtt клиент.</li></ol>
+<ul class="gallery mw-gallery-packed" style="">
+		<li class="gallerybox" style="width: 199.297px;">
+			<div class="thumb" style="width: 198px;"><span typeof="mw:File"><a href="https://wiki.wirenboard.com/wiki/index.php?title=%D0%A4%D0%B0%D0%B9%D0%BB:Scada_fuxa_create_mqttclient_connection.png&amp;filetimestamp=20260317205342&amp;" class="mw-file-description" title="Список доступных соединений"><img alt="Список доступных соединений" src="media/296px-Scada_fuxa_create_mqttclient_connection.png" decoding="async" width="198" height="200" class="mw-file-element" data-file-width="889" data-file-height="901"></a></span></div>
+			<div class="gallerytext">Список доступных соединений</div>
+		</li>
+</ul>
+<p><br>
+Укажите параметры подключения:
+</p>
+<table class="wikitable">
+
+<tbody><tr>
+<th>Параметр
+</th>
+<th>Значение
+</th></tr>
+<tr>
+<td><b>Name</b>
+</td>
+<td>Произвольное имя (например, MQTT WirenBoard)
+</td></tr>
+<tr>
+<td><b>Type</b>
+</td>
+<td>MQTTclient
+</td></tr>
+<tr>
+<td><b>Enabled</b>
+</td>
+<td>Включить (переключатель в положение ON)
+</td></tr>
+<tr>
+<td><b>Address (mqtt://[server]:[port])</b>
+</td>
+<td>mqtt://127.0.0.1:1883 (если FUXA на контроллере)
+</td></tr></tbody></table>
+<p>Нажмите <b>OK</b>. Если всё настроено верно, рядом с названием появится <b>зеленый индикатор</b>.
+</p>
+<h2><span id=".D0.94.D0.BE.D0.B1.D0.B0.D0.B2.D0.BB.D0.B5.D0.BD.D0.B8.D0.B5_.D1.82.D0.B5.D0.B3.D0.BE.D0.B2_.28.D0.BF.D0.BE.D0.B4.D0.BF.D0.B8.D1.81.D0.BA.D0.B0_.D0.BD.D0.B0_.D1.82.D0.BE.D0.BF.D0.B8.D0.BA.D0.B8_MQTT.29"></span><span class="mw-headline" id="Добавление_тегов_(подписка_на_топики_MQTT)">Добавление тегов (подписка на топики MQTT)</span></h2>
+<p>Для получения данных от датчиков необходимо настроить теги, привязанные к MQTT-топикам Wiren Board.   
+</p><p>Нажмите на иконку <b>«прикрепить»</b> (скрепка/карандаш) рядом с созданным соединением.
+</p>
+<ul class="gallery mw-gallery-packed" style="">
+		<li class="gallerybox" style="width: 206px;">
+			<div class="thumb" style="width: 204px;"><span typeof="mw:File"><a href="https://wiki.wirenboard.com/wiki/index.php?title=%D0%A4%D0%B0%D0%B9%D0%BB:Scada_fuxa_create_mqttclient_tag_button.png&amp;filetimestamp=20260317212726&amp;" class="mw-file-description" title="Кнопка Tag - &quot;Скрепка&quot;"><img alt="Кнопка Tag - &quot;Скрепка&quot;" src="media/306px-Scada_fuxa_create_mqttclient_tag_button.png" decoding="async" width="204" height="200" class="mw-file-element" data-file-width="772" data-file-height="757"></a></span></div>
+			<div class="gallerytext">Кнопка Tag - "Скрепка"</div>
+		</li>
+		<li class="gallerybox" style="width: 312.641px;">
+			<div class="thumb" style="width: 311px;"><span typeof="mw:File"><a href="https://wiki.wirenboard.com/wiki/index.php?title=%D0%A4%D0%B0%D0%B9%D0%BB:Scada_fuxa_create_mqttclient_tag_subscribe.png&amp;filetimestamp=20260317212711&amp;" class="mw-file-description" title="Кнопка Search"><img alt="Кнопка Search" src="media/466px-Scada_fuxa_create_mqttclient_tag_subscribe.png" decoding="async" width="311" height="200" class="mw-file-element" data-file-width="1179" data-file-height="759"></a></span></div>
+			<div class="gallerytext">Кнопка Search</div>
+		</li>
+</ul>
+<p>Нажмите <b>«+»</b> для добавления тега.
+</p>
+<h3><span id=".D0.A2.D0.B5.D0.B3_.D0.B4.D0.BB.D1.8F_.D0.BF.D0.BE.D0.B4.D0.BF.D0.B8.D1.81.D0.BA.D0.B8_.D0.BD.D0.B0_.D1.82.D0.BE.D0.BF.D0.B8.D0.BA"></span><span class="mw-headline" id="Тег_для_подписки_на_топик">Тег для подписки на топик</span></h3>
+<p><b>Настройка топика:</b>
+Для указания топика вы можете:
+</p>
+<ul><li>ввести путь к топику вручную в формате /devices/ID/controls/CONTROL;</li>
+<li>или воспользоваться функцией поиска: нажмите на иконку <b>«лупа»</b> (Search topics on broker) и выберите нужный параметр из списка найденных топиков.</li></ul>
+<p>В поле <b>Name</b> оставьте введенный автоматически полный путь до топика или введите понятное название (например, Hall_Temp или Buzzer_enable) - данное имя будет использоваться далее только в рамках FUXA.
+</p><p>Далее важно нажать <b>Subscribe</b>, чтобы данный топик сохранился.
+</p>
+<h3><span id=".D0.A2.D0.B5.D0.B3_.D0.B4.D0.BB.D1.8F_.D0.BF.D1.83.D0.B1.D0.BB.D0.B8.D0.BA.D0.B0.D1.86.D0.B8.D0.B8_.D0.B2_.D1.82.D0.BE.D0.BF.D0.B8.D0.BA"></span><span class="mw-headline" id="Тег_для_публикации_в_топик">Тег для публикации в топик</span></h3>
+<p>Для того чтобы публиковать в топик, нужно создать запись другого типа, выбрав "Publish",
+используя <b>/on</b> топики, например <b>/devices/buzzer/controls/enabled/on</b>.
+</p>
+<ul class="gallery mw-gallery-packed" style="">
+		<li class="gallerybox" style="width: 300.641px;">
+			<div class="thumb" style="width: 299px;"><span typeof="mw:File"><a href="https://wiki.wirenboard.com/wiki/index.php?title=%D0%A4%D0%B0%D0%B9%D0%BB:Scada_fuxa_create_mqttclient_tag_write.png&amp;filetimestamp=20260317222628&amp;" class="mw-file-description" title="Tag для записи"><img alt="Tag для записи" src="media/448px-Scada_fuxa_create_mqttclient_tag_write.png" decoding="async" width="299" height="200" class="mw-file-element" data-file-width="1140" data-file-height="764"></a></span></div>
+			<div class="gallerytext"> Tag для записи</div>
+		</li>
+</ul>
+<p>Далее при желании использовать toggle обязательно нужно указывать маску; например, для <b>/devices/buzzer/controls/enabled/on</b> нужно указать маску 0-го бита.
+</p>
+<h2><span id=".D0.A1.D0.BE.D0.B7.D0.B4.D0.B0.D0.BD.D0.B8.D0.B5_SCADA-.D0.BF.D0.B0.D0.BD.D0.B5.D0.BB.D0.B8"></span><span class="mw-headline" id="Создание_SCADA-панели">Создание SCADA-панели</span></h2>
+<p>Теперь, когда у нас есть настроенные теги, перейдите на центральный холст редактора для создания визуального интерфейса.
+</p>
+<h3><span id=".D0.A8.D0.B0.D0.B3_1:_.D0.94.D0.BE.D0.B1.D0.B0.D0.B2.D0.BB.D0.B5.D0.BD.D0.B8.D0.B5_.D0.B8.D0.BD.D0.B4.D0.B8.D0.BA.D0.B0.D1.82.D0.BE.D1.80.D0.B0_.D1.82.D0.B5.D0.BC.D0.BF.D0.B5.D1.80.D0.B0.D1.82.D1.83.D1.80.D1.8B_CPU"></span><span class="mw-headline" id="Шаг_1:_Добавление_индикатора_температуры_CPU">Шаг 1: Добавление индикатора температуры CPU</span></h3>
+<p>Выведем на панель текущую температуру процессора контроллера:
+</p>
+<ol><li>В левой панели (библиотека компонентов) выберите виджет <b>Circular Gauge</b> (круглый датчик) и добавьте его на холст. Обратите внимание, что перетаскивание может не работать.</li>
+<li>Выделите добавленный компонент, кликнув по нему мышкой.</li>
+<li>В правой панели перейдите в свойства (Property) и найдите раздел <b>Variable/Tag</b>.</li>
+<li>Выберите из списка ранее созданный MQTT-тег, отвечающий за температуру (например, подписанный на топик <code>/devices/hwmon/controls/CPU Temperature</code>).</li>
+<li>При необходимости там же в свойствах настройте минимальное и максимальное значения шкалы (например, Min: 0, Max: 100).</li></ol>
+<h3><span id=".D0.A8.D0.B0.D0.B3_2:_.D0.94.D0.BE.D0.B1.D0.B0.D0.B2.D0.BB.D0.B5.D0.BD.D0.B8.D0.B5_.D0.BF.D0.B5.D1.80.D0.B5.D0.BA.D0.BB.D1.8E.D1.87.D0.B0.D1.82.D0.B5.D0.BB.D1.8F_.D0.B4.D0.BB.D1.8F_.D0.B7.D1.83.D0.BC.D0.BC.D0.B5.D1.80.D0.B0_.28Buzzer.29"></span><span class="mw-headline" id="Шаг_2:_Добавление_переключателя_для_зуммера_(Buzzer)">Шаг 2: Добавление переключателя для зуммера (Buzzer)</span></h3>
+<p>Теперь добавим элемент для управления встроенным зуммером контроллера:
+</p>
+<ol><li>Из библиотеки компонентов выберите виджет <b>Switch</b> (переключатель) и перетащите его на холст.</li>
+<li>Выделите переключатель и откройте его свойства.</li>
+<li>В разделе <b>Variable/Tag</b> выберите тег, который вы создали для публикации (топик <code>/devices/buzzer/controls/enabled/on</code>).</li>
+<li>Найдите в свойствах компонента параметр <b>Bitmask</b> и обязательно установите его в значение <b>0</b>. Это позволит переключателю корректно отправлять бинарные команды (1 и 0) в топик.</li></ol>
+<ul class="gallery mw-gallery-packed" style="">
+		<li class="gallerybox" style="width: 384.641px;">
+			<div class="thumb" style="width: 383px;"><span typeof="mw:File"><a href="https://wiki.wirenboard.com/wiki/index.php?title=%D0%A4%D0%B0%D0%B9%D0%BB:Scada_fuxa_create_event_click.png&amp;filetimestamp=20260317234813&amp;" class="mw-file-description" title="Настройка события click"><img alt="Настройка события click" src="media/574px-Scada_fuxa_create_event_click.png" decoding="async" width="383" height="200" class="mw-file-element" data-file-width="905" data-file-height="473"></a></span></div>
+			<div class="gallerytext"> Настройка события click</div>
+		</li>
+</ul>
+<h2><span id=".D0.97.D0.B0.D0.BF.D1.83.D1.81.D0.BA_.D0.B8_.D1.82.D0.B5.D1.81.D1.82.D0.B8.D1.80.D0.BE.D0.B2.D0.B0.D0.BD.D0.B8.D0.B5"></span><span class="mw-headline" id="Запуск_и_тестирование">Запуск и тестирование</span></h2>
+<p>Для проверки работы нажмите на иконку <b>«треугольник»</b> (Launch) в верхней панели редактора.
+Система перейдет в режим исполнения. Проверьте, что индикаторы отображают реальные данные, а кнопки управляют устройствами.
+Для постоянной работы используйте вкладку <b>Home</b>.
+</p>
+<h2><span id=".D0.9D.D0.B0.D0.B2.D0.B8.D0.B3.D0.B0.D1.86.D0.B8.D1.8F_.D0.B8_.D0.BF.D1.80.D1.8F.D0.BC.D1.8B.D0.B5_.D1.81.D1.81.D1.8B.D0.BB.D0.BA.D0.B8"></span><span class="mw-headline" id="Навигация_и_прямые_ссылки">Навигация и прямые ссылки</span></h2>
+<h3><span id=".D0.9E.D1.82.D0.BA.D1.80.D1.8B.D1.82.D0.B8.D0.B5_.D1.81.D1.82.D1.80.D0.B0.D0.BD.D0.B8.D1.86.D1.8B_.D0.BF.D0.BE_URL"></span><span class="mw-headline" id="Открытие_страницы_по_URL">Открытие страницы по URL</span></h3>
+<p>Вы можете настроить автоматическое открытие конкретной страницы (View) через адресную строку:
+</p>
+<ul><li><a target="_blank" rel="nofollow noreferrer noopener" class="external free" href="http://192.168.1.10:1881/view?name=NewPage">http://192.168.1.10:1881/view?name=NewPage</a></li></ul>
+<p><span role="note" class="note note-info">Обратите внимание: стандартное название страницы (MainView) не работает в ссылках. Рекомендуется переименовать страницу в редакторе на простое имя (например, <b>NewPage</b>).</span>
+</p>
+<h2><span id=".D0.94.D0.BE.D0.BF.D0.BE.D0.BB.D0.BD.D0.B8.D1.82.D0.B5.D0.BB.D1.8C.D0.BD.D1.8B.D0.B5_.D0.BD.D0.B0.D1.81.D1.82.D1.80.D0.BE.D0.B9.D0.BA.D0.B8_.D0.B8.D0.BD.D1.82.D0.B5.D1.80.D1.84.D0.B5.D0.B9.D1.81.D0.B0"></span><span class="mw-headline" id="Дополнительные_настройки_интерфейса">Дополнительные настройки интерфейса</span></h2>
+<h3><span id=".D0.9A.D0.BD.D0.BE.D0.BF.D0.BA.D0.B8_.D0.BD.D0.B0_.D0.B1.D0.BE.D0.BA.D0.BE.D0.B2.D0.BE.D0.B9_.D0.B8_.D0.B2.D0.B5.D1.80.D1.85.D0.BD.D0.B5.D0.B9_.D0.BF.D0.B0.D0.BD.D0.B5.D0.BB.D1.8F.D1.85"></span><span class="mw-headline" id="Кнопки_на_боковой_и_верхней_панелях">Кнопки на боковой и верхней панелях</span></h3>
+<p>Глобальная навигация настраивается в разделе макета:
+</p><p>Зайдите в <b>Edit Project</b> -&gt; <b>Layout</b>.
+Вкладка <b>Navigation Side Menu</b>: здесь добавляются кнопки, выбираются иконки и привязываются целевые страницы (View).
+Для стационарных экранов установите <b>Side Mode</b> в значение <b>Fixed</b>, чтобы меню не скрывалось.
+Вкладка <b>Header Navigation Bar</b>: здесь настраивается отображение уведомлений об авариях (Alarms).
+</p>
+<h3><span id=".D0.9A.D0.BD.D0.BE.D0.BF.D0.BA.D0.B8_.D0.BD.D0.B0_.D1.81.D1.82.D1.80.D0.B0.D0.BD.D0.B8.D1.86.D0.B5"></span><span class="mw-headline" id="Кнопки_на_странице">Кнопки на странице</span></h3>
+<p>Для переходов внутри интерфейса можно использовать обычные кнопки из библиотеки компонентов:
+</p><p>В свойствах кнопки выберите событие (Event) -&gt; <b>Click</b> -&gt; <b>Open Page</b>.
+</p>
+<h2><span id=".D0.9E.D0.BF.D1.82.D0.B8.D0.BC.D0.B8.D0.B7.D0.B0.D1.86.D0.B8.D1.8F_.D0.B4.D0.BB.D1.8F_.D0.BF.D0.BB.D0.B0.D0.BD.D1.88.D0.B5.D1.82.D0.BE.D0.B2"></span><span class="mw-headline" id="Оптимизация_для_планшетов">Оптимизация для планшетов</span></h2>
+<p>Чтобы интерфейс выглядел органично на настенном планшете, используйте функцию браузера <b>«Добавить на главный экран»</b> или специализированное ПО.
+</p>
+<h3><span id="Fully_Kiosk_Browser_.28Android.29"></span><span class="mw-headline" id="Fully_Kiosk_Browser_(Android)">Fully Kiosk Browser (Android)</span></h3>
+<p>Рекомендуемое приложение для создания профессиональных панелей управления:
+</p><p><b>Start URL:</b> Укажите прямую ссылку на вашу главную страницу FUXA.
+</p><p><b>Kiosk Mode:</b> Активируйте для блокировки системных кнопок планшета.
+</p><p><b>Motion Detection:</b> Настройте включение экрана по камере при приближении человека.
+</p>
+<h2><span id=".D0.9F.D0.BE.D0.BB.D0.B5.D0.B7.D0.BD.D1.8B.D0.B5_.D1.81.D1.81.D1.8B.D0.BB.D0.BA.D0.B8"></span><span class="mw-headline" id="Полезные_ссылки">Полезные ссылки</span></h2>
+<p><a target="_blank" rel="nofollow noreferrer noopener" class="external text" href="https://github.com/frangoteam/FUXA">Ссылка на официальный репозиторий разработчиков ПО</a>.
+</p><p><a target="_blank" rel="nofollow noreferrer noopener" class="external text" href="https://frangoteam.org/">Ссылка на официальный сайт разработчиков ПО</a>.
+</p>
+<table class="wikitable centered" style="max-width:1200px">
+<caption>Поддерживаемые контроллером Wiren Board системы верхнего уровня, приложения, способы программирования, протоколы и устройства
+</caption>
+
+<tbody><tr>
+<th colspan="2">Протоколы
+</th></tr>
+<tr>
+<td>Опрос датчиков и работа с устройствами (в базовой комплектации)
+</td>
+<td><a href="https://wiki.wirenboard.com/wiki/1-Wire" title="1-Wire">1-Wire</a> • <a href="https://wiki.wirenboard.com/wiki/DLMS/COSEM" title="DLMS/COSEM">DLMS/COSEM</a> • <a href="https://wiki.wirenboard.com/wiki/Wb-mqtt-serial_driver" title="Wb-mqtt-serial driver"> Modbus RTU/TCP Master</a> • <a href="https://wiki.wirenboard.com/wiki/GOST_MEK_61107" title="GOST MEK 61107"> ГОСТ МЭК 61107</a> • <a href="https://wiki.wirenboard.com/wiki/DLMS/COSEM" title="DLMS/COSEM"> СПОДЭС (ГОСТ Р 58940-2020)</a>
+</td></tr>
+<tr>
+<td>Опрос датчиков и работа с устройствами (с помощью <a href="https://wiki.wirenboard.com/wiki/Wiren_Board_6:_Extension_Modules" class="mw-redirect" title="Wiren Board 6: Extension Modules"> модулей расширения</a>)
+</td>
+<td><a href="https://wiki.wirenboard.com/wiki/KNX" title="KNX">KNX</a> • <a href="https://wiki.wirenboard.com/wiki/EBUS" title="EBUS">eBUS</a> • <a href="https://wiki.wirenboard.com/wiki/OpenTherm" title="OpenTherm">OpenTherm</a> • <a href="https://wiki.wirenboard.com/wiki/Z-Wave" title="Z-Wave">Z-Wave</a> • <a href="https://wiki.wirenboard.com/wiki/Zigbee" title="Zigbee">Zigbee</a>
+</td></tr>
+<tr>
+<td>Опрос контроллера из систем верхнего уровня и с других устройств
+</td>
+<td><a href="https://wiki.wirenboard.com/wiki/KNX" title="KNX">KNX</a> • <a href="https://wiki.wirenboard.com/wiki/Wb-mqtt-mbgate" title="Wb-mqtt-mbgate"> Modbus RTU/TCP Slave</a> • <a href="https://wiki.wirenboard.com/wiki/MQTT" title="MQTT">MQTT</a> • <a href="https://wiki.wirenboard.com/wiki/OPC_UA" title="OPC UA">OPC UA</a> • <a href="https://wiki.wirenboard.com/wiki/SNMP" title="SNMP">SNMP</a> • <a href="https://wiki.wirenboard.com/wiki/Zabbix" title="Zabbix">Zabbix</a> • <a href="https://wiki.wirenboard.com/wiki/MEK_104" title="MEK 104"> МЭК 104</a> • <a href="https://wiki.wirenboard.com/wiki/SmartWeb" title="SmartWeb">SmartWeb (Гидролого)</a>
+</td></tr>
+<tr>
+<td>Через шлюзы
+</td>
+<td><a href="https://wiki.wirenboard.com/wiki/DALI" title="DALI">DALI</a> • <a href="https://wiki.wirenboard.com/wiki/LoRaWAN" title="LoRaWAN">LoRaWAN</a>
+</td></tr>
+<tr>
+<th colspan="2">Системы верхнего уровня
+</th></tr>
+<tr>
+<td>Системы мониторинга и SCADA
+</td>
+<td><a href="https://wiki.wirenboard.com/wiki/Grafana" title="Grafana">Grafana</a> • <a href="https://wiki.wirenboard.com/wiki/Home_Assistant" title="Home Assistant">Home Assistant</a> • <a href="https://wiki.wirenboard.com/wiki/IntraHouse" title="IntraHouse"> IntraHouse</a> • <a href="https://wiki.wirenboard.com/wiki/IntraSCADA" title="IntraSCADA"> IntraSCADA</a> • <a href="https://wiki.wirenboard.com/wiki/SprutHub" title="SprutHub">Sprut.hub</a> • <a href="https://wiki.wirenboard.com/wiki/MasterSCADA" class="mw-redirect" title="MasterSCADA">MasterSCADA</a> • <a href="https://wiki.wirenboard.com/wiki/Nagios" title="Nagios">Nagios</a> • <a href="https://wiki.wirenboard.com/wiki/SimpLight_SCADA" title="SimpLight SCADA">SimpLight SCADA</a> • <a href="https://wiki.wirenboard.com/wiki/Rapid_SCADA" title="Rapid SCADA">Rapid SCADA</a> • <a href="https://wiki.wirenboard.com/wiki/SAYMON" title="SAYMON">SAYMON</a> • <a href="https://wiki.wirenboard.com/wiki/Zabbix" title="Zabbix">Zabbix</a> • <a href="https://wiki.wirenboard.com/wiki/IRidium_Server" title="IRidium Server"> iRidium Server</a> • <a href="https://wiki.wirenboard.com/wiki/AggreGate" title="AggreGate">AggreGate</a> • <a href="https://wiki.wirenboard.com/wiki/TMIUS_KP" title="TMIUS KP"> ТМИУС КП</a> • <a href="https://wiki.wirenboard.com/wiki/Majordom_iot_agent" title="Majordom iot agent">Мажордом</a> • <a href="https://wiki.wirenboard.com/wiki/WebDisCo" title="WebDisCo"> SCADA WebDisCo</a> • <a class="mw-selflink selflink"> SCADA FUXA</a> • <a href="https://wiki.wirenboard.com/wiki/WB-Loxone" title="WB-Loxone">Loxone</a>
+</td></tr>
+<tr>
+<td>Передача показаний счётчиков
+</td>
+<td><a href="https://wiki.wirenboard.com/wiki/Waterius" title="Waterius">Ватериус</a>
+</td></tr>
+<tr>
+<th colspan="2">Приложения
+</th></tr>
+<tr>
+<td>Управление с телефона</td>
+<td><a href="https://wiki.wirenboard.com/wiki/MQTT_Dash" title="MQTT Dash"> MQTT Dash</a> • <a href="https://wiki.wirenboard.com/wiki/IRidium" title="IRidium">iRidium</a> • <a href="https://wiki.wirenboard.com/wiki/Home_Assistant" title="Home Assistant">Home Assistant</a> • <a href="https://wiki.wirenboard.com/wiki/Apple_HomeKit" title="Apple HomeKit"> Apple Home</a> • <a href="https://wiki.wirenboard.com/wiki/Yandex-smart-home" title="Yandex-smart-home">Дом с Алисой</a> • <a href="https://wiki.wirenboard.com/wiki/SberDevices" title="SberDevices">Салют! Умный дом</a> • <a href="https://wiki.wirenboard.com/wiki/Majordom_iot_agent" title="Majordom iot agent">Мажордом</a>
+</td></tr>
+<tr>
+<td>Голосовые помощники
+</td>
+<td><a href="https://wiki.wirenboard.com/wiki/Apple_HomeKit" title="Apple HomeKit"> Siri </a> • <a href="https://wiki.wirenboard.com/wiki/SberDevices" title="SberDevices"> Салют</a> • <a href="https://wiki.wirenboard.com/wiki/Yandex-smart-home" title="Yandex-smart-home"> Алиса</a>
+</td></tr>
+<tr>
+<th colspan="2">Способы программирования
+</th></tr>
+<tr>
+<td>Визуальное программирование</td>
+<td><a href="https://wiki.wirenboard.com/wiki/Node-RED" title="Node-RED"> Node-RED</a>
+</td></tr>
+<tr>
+<td>Упрощённый текстовый движок правил
+</td>
+<td><a href="https://wiki.wirenboard.com/wiki/Wb-rules" title="Wb-rules"> wb-rules</a>
+</td></tr>
+<tr>
+<td>Сценарии автоматизации без программирования
+</td>
+<td><a href="https://wiki.wirenboard.com/wiki/Scenarios" title="Scenarios"> wb-scenarios</a>
+</td></tr>
+<tr>
+<td>Стандартное программирование
+</td>
+<td><a href="https://wiki.wirenboard.com/wiki/Python" title="Python"> Python</a> • <a href="https://wiki.wirenboard.com/wiki/Cpp" title="Cpp"> C++</a> • <a href="https://wiki.wirenboard.com/wiki/Go" title="Go"> Go</a> • <a href="https://wiki.wirenboard.com/wiki/Nodejs" title="Nodejs"> Node.js</a>
+</td></tr>
+<tr>
+<th colspan="2">Языки программирования ПЛК
+</th></tr>
+<tr>
+<td>FBD, ST, LD, SFC <a href="https://wiki.wirenboard.com/wiki/IEC_61131-3" title="IEC 61131-3"> (МЭК 61131-3)</a></td>
+<td><a href="https://wiki.wirenboard.com/wiki/MasterPLC_on_Wiren_Board" title="MasterPLC on Wiren Board">MasterPLC</a> • <a href="https://wiki.wirenboard.com/wiki/ISaGRAF" title="ISaGRAF">ISaGRAF</a> • <a href="https://wiki.wirenboard.com/wiki/CODESYS" title="CODESYS">CODESYS</a> • <a href="https://wiki.wirenboard.com/wiki/Maximum_Automation_Soft_Controller" title="Maximum Automation Soft Controller"> Maximum Automation Soft Controller</a> • <a target="_blank" rel="nofollow noreferrer noopener" class="external text" href="https://kaskad-asu.com/products-and-services/software/klogic/">KLogic</a> • <a href="https://wiki.wirenboard.com/wiki/WebDisCo#%D0%9F%D1%80%D0%B8%D0%BC%D0%B5%D1%80_%D1%80%D0%B0%D0%B1%D0%BE%D1%82%D1%8B_%D1%87%D0%B5%D1%80%D0%B5%D0%B7_%D1%8F%D0%B7%D1%8B%D0%BA%D0%B8_%D0%9C%D0%AD%D0%9A_61131-3" title="WebDisCo"> WebDisCo + OpenPLC</a>
+</td></tr>
+
+<tr>
+<th colspan="2" id="testing">Протестированные устройства сторонних производителей
+</th></tr>
+<tr>
+<td>Адаптеры протоколов
+</td>
+<td><a href="https://wiki.wirenboard.com/wiki/ECODim_DALI_GW2" title="ECODim DALI GW2">ECODim DALI GW2</a> • <a href="https://wiki.wirenboard.com/wiki/DALI-LOGIC-LITE-PS-x1" title="DALI-LOGIC-LITE-PS-x1"> Arlight DALI-LOGIC-LITE-PS-x1</a> • <a href="https://wiki.wirenboard.com/wiki/Lavritech_L1_Lite_LoRaWAN" title="Lavritech L1 Lite LoRaWAN">Lavritech L1 Lite LoRaWAN</a> • <a href="https://wiki.wirenboard.com/wiki/RIELTA-BRSHS-RK" title="RIELTA-BRSHS-RK"> Шлюз БРШС-РК-485 (РИЭЛТА)</a> •  <a href="https://wiki.wirenboard.com/wiki/NEVOTON_BCG-1.0.4-W" title="NEVOTON BCG-1.0.4-W"> NEVOTON BCG-1.0.4-W</a>
+</td></tr>
+<tr>
+<td>Аудиоресиверы сетевые
+</td>
+<td><a href="https://wiki.wirenboard.com/wiki/URRI_A1_PRO" title="URRI A1 PRO">URRI A1 PRO</a> • <a href="https://wiki.wirenboard.com/wiki/URRI-A1" title="URRI-A1">URRI A1</a> • <a href="https://wiki.wirenboard.com/wiki/Skirell-Sound" title="Skirell-Sound">Skirell-Sound</a>
+</td></tr>
+<tr>
+<td style="min-width: 250px">Датчики климата
+</td>
+<td><a href="https://wiki.wirenboard.com/wiki/DS18B20" class="mw-redirect" title="DS18B20"> DS18B20 и клоны</a> • <a href="https://wiki.wirenboard.com/wiki/Kvadro_1WIRE-RS485" title="Kvadro 1WIRE-RS485">Kvadro 1WIRE-RS485</a> • <a href="https://wiki.wirenboard.com/wiki/Wellpro_WP3066ADAM" title="Wellpro WP3066ADAM">Wellpro WP3066ADAM</a> • <a href="https://wiki.wirenboard.com/wiki/Dadget_MT8057S" title="Dadget MT8057S">Даджет MT8057/MT8057S</a> • <a href="https://wiki.wirenboard.com/wiki/RD_MSU21" title="RD MSU21">РД MSU21</a> • <a href="https://wiki.wirenboard.com/wiki/RD_MSU24" title="RD MSU24">РД MSU24</a> • <a href="https://wiki.wirenboard.com/wiki/RD_MSU34%2BTLP" title="RD MSU34+TLP">РД MSU34+TLP</a> • <a href="https://wiki.wirenboard.com/wiki/RD_MSU34%2BTHLP" title="RD MSU34+THLP">РД MSU34+THLP</a> • <a href="https://wiki.wirenboard.com/wiki/Eksis_IVTM-7_M_3" title="Eksis IVTM-7 M 3">Эксис ИВТМ-7 М 3</a>
+</td></tr>
+<tr>
+<td>Датчики присутствия
+</td>
+<td><a href="https://wiki.wirenboard.com/wiki/Presence_Sensor_MTD%D0%A562-MB" title="Presence Sensor MTDХ62-MB"> MTDХ62-MB (MTD062-MB, MTD262-MB)</a>
+</td></tr>
+<tr>
+<td>Датчики уровня
+</td>
+<td><a href="https://wiki.wirenboard.com/wiki/ESCORT_DB-2" title="ESCORT DB-2"> ЭСКОРТ ДБ-2</a>
+</td></tr>
+<tr>
+<td>Универсальные датчики
+</td>
+<td><a href="https://wiki.wirenboard.com/wiki/TESLiOT_BLE_Sensors" title="TESLiOT BLE Sensors">TESLiOT (BLE)</a>
+</td></tr>
+<tr>
+<td>Диммеры
+</td>
+<td><a href="https://wiki.wirenboard.com/wiki/DALI" title="DALI"> DALI</a> • <a href="https://wiki.wirenboard.com/wiki/Philio_PAD07-RU_Z-Wave_Dimmer" title="Philio PAD07-RU Z-Wave Dimmer"> Philio PAD07-RU</a> • <a href="https://wiki.wirenboard.com/wiki/Uniel_UCH-M131RC/0808" title="Uniel UCH-M131RC/0808"> Uniel UCH-M131RC/0808</a> • <a href="https://wiki.wirenboard.com/wiki/Uniel_UCH-M141RC/0808" title="Uniel UCH-M141RC/0808"> Uniel UCH-M141RC/0808</a> • <a href="https://wiki.wirenboard.com/wiki/RD_DDL04R" title="RD DDL04R"> РД DDL04R</a> • <a href="https://wiki.wirenboard.com/wiki/RD_DDL24" title="RD DDL24"> РД DDL24</a> • <a href="https://wiki.wirenboard.com/wiki/RD_DDM845R" title="RD DDM845R"> РД DDM845R</a> • <a href="https://wiki.wirenboard.com/wiki/Demid.net" title="Demid.net"> Demid.Net</a>
+</td></tr>
+<tr>
+<td>Домофоны
+</td>
+<td><a href="https://wiki.wirenboard.com/wiki/Domofon_modbus" title="Domofon modbus"> Домофоны координатного типа: VIZIT (ВИЗИТ), Элтис, Цифрал, Техком, Метаком, Beward и др.</a>
+</td></tr>
+<tr>
+<td>Источники питания и ИБП
+</td>
+<td><a href="https://wiki.wirenboard.com/wiki/MEANWELL_DRS_Series" title="MEANWELL DRS Series"> MEAN WELL DRS Series</a>
+</td></tr>
+<tr>
+<td>Кондиционеры
+</td>
+<td>
+<p><a href="https://wiki.wirenboard.com/wiki/Haier_YCJ-A002" title="Haier YCJ-A002"> Haier YCJ-A002</a> • 
+<a href="https://wiki.wirenboard.com/wiki/Philio_PAR01-RU_Z-Wave_AC_IR_Control" title="Philio PAR01-RU Z-Wave AC IR Control"> Z-Wave ИК-передатчик PAR01-RU</a> • 
+Hisense (<a href="https://wiki.wirenboard.com/wiki/ONOKOM-AIR-HS-3-MB-B" title="ONOKOM-AIR-HS-3-MB-B">ONOKOM-AIR-HS-3-MB-B</a>, <a href="https://wiki.wirenboard.com/wiki/ONOKOM-AIR-HS-5-MB-B" title="ONOKOM-AIR-HS-5-MB-B">ONOKOM-AIR-HS-5-MB-B</a>, <a href="https://wiki.wirenboard.com/wiki/ONOKOM-AIR-HS-6-MB-B" title="ONOKOM-AIR-HS-6-MB-B">ONOKOM-AIR-HS-6-MB-B</a>) • 
+Daikin (<a href="https://wiki.wirenboard.com/wiki/ONOKOM-AIR-DK-1-MB-B" title="ONOKOM-AIR-DK-1-MB-B">ONOKOM-AIR-DK-1-MB-B</a>, <a href="https://wiki.wirenboard.com/wiki/ONOKOM-AIR-DK-5-MB-B" title="ONOKOM-AIR-DK-5-MB-B">ONOKOM-AIR-DK-5-MB-B</a>) • 
+Mitsubishi Electric (<a href="https://wiki.wirenboard.com/wiki/ONOKOM-AIR-ME-1-MB-B" title="ONOKOM-AIR-ME-1-MB-B">ONOKOM-AIR-ME-1-MB-B</a>) • 
+Mitsubishi Heavy (<a href="https://wiki.wirenboard.com/wiki/ONOKOM-AIR-MH-2-MB-B" title="ONOKOM-AIR-MH-2-MB-B">ONOKOM-AIR-MH-2-MB-B</a>) • 
+AUX (<a href="https://wiki.wirenboard.com/wiki/ONOKOM-AIR-AUX-1-MB-B" title="ONOKOM-AIR-AUX-1-MB-B">ONOKOM-AIR-AUX-1-MB-B</a>) • 
+GREE (<a href="https://wiki.wirenboard.com/wiki/ONOKOM-AIR-GR-1-MB-B" title="ONOKOM-AIR-GR-1-MB-B">ONOKOM-AIR-GR-1-MB-B</a>, <a href="https://wiki.wirenboard.com/wiki/ONOKOM-AIR-GR-3-MB-B" title="ONOKOM-AIR-GR-3-MB-B">ONOKOM-AIR-GR-3-MB-B</a>, <a href="https://wiki.wirenboard.com/wiki/ONOKOM-AIR-GR-5-MB-B" title="ONOKOM-AIR-GR-5-MB-B">ONOKOM-AIR-GR-5-MB-B</a>) • 
+MDV (<a href="https://wiki.wirenboard.com/wiki/ONOKOM-AIR-MD-1-MB-B" title="ONOKOM-AIR-MD-1-MB-B">ONOKOM-AIR-MD-1-MB-B</a>, <a href="https://wiki.wirenboard.com/wiki/ONOKOM-AIR-MD-3-MB-B" title="ONOKOM-AIR-MD-3-MB-B">ONOKOM-AIR-MD-3-MB-B</a>) • 
+VRF (<a href="https://wiki.wirenboard.com/wiki/ONOKOM-AIR-MD-VRF-MB-B" title="ONOKOM-AIR-MD-VRF-MB-B">ONOKOM-AIR-MD-VRF-MB-B</a>, <a href="https://wiki.wirenboard.com/wiki/ONOKOM-AIR-AUX-VRF-MB-B" title="ONOKOM-AIR-AUX-VRF-MB-B">ONOKOM-AIR-AUX-VRF-MB-B</a>, <a href="https://wiki.wirenboard.com/wiki/ONOKOM-AIR-CG-VRF-MB-B" title="ONOKOM-AIR-CG-VRF-MB-B">ONOKOM-AIR-CG-VRF-MB-B</a>, <a href="https://wiki.wirenboard.com/wiki/ONOKOM-AIR-HS-VRF-MB-B" title="ONOKOM-AIR-HS-VRF-MB-B">ONOKOM-AIR-HS-VRF-MB-B</a>) • 
+TCL (<a href="https://wiki.wirenboard.com/wiki/ONOKOM-AIR-TCL-1-MB-B" title="ONOKOM-AIR-TCL-1-MB-B">ONOKOM-AIR-TCL-1-MB-B</a>, <a href="https://wiki.wirenboard.com/wiki/ONOKOM-AIR-TCL-3-MB-B" title="ONOKOM-AIR-TCL-3-MB-B">ONOKOM-AIR-TCL-3-MB-B</a>, <a href="https://wiki.wirenboard.com/wiki/ONOKOM-AIR-TCL-6-MB-B" title="ONOKOM-AIR-TCL-6-MB-B">ONOKOM-AIR-TCL-6-MB-B</a>) • 
+Hitachi (<a href="https://wiki.wirenboard.com/wiki/ONOKOM-AIR-HT-1-MB-B" title="ONOKOM-AIR-HT-1-MB-B">ONOKOM-AIR-HT-1-MB-B</a>) • 
+TOSHIBA (<a href="https://wiki.wirenboard.com/wiki/ONOKOM-AIR-TB-1-MB-B" title="ONOKOM-AIR-TB-1-MB-B">ONOKOM-AIR-TB-1-MB-B</a>) • 
+Haier (<a href="https://wiki.wirenboard.com/wiki/ONOKOM-AIR-HR-1-MB-B" title="ONOKOM-AIR-HR-1-MB-B">ONOKOM-AIR-HR-1-MB-B</a>) • 
+Panasonic (<a href="https://wiki.wirenboard.com/wiki/ONOKOM-AIR-PN-1-MB-B" title="ONOKOM-AIR-PN-1-MB-B">ONOKOM-AIR-PN-1-MB-B</a>) • 
+Samsung (<a href="https://wiki.wirenboard.com/wiki/ONOKOM-AIR-SM-9-MB-B" title="ONOKOM-AIR-SM-9-MB-B">ONOKOM-AIR-SM-9-MB-B</a>) • 
+LG (<a href="https://wiki.wirenboard.com/wiki/ONOKOM-AIR-LG-8-MB-B" title="ONOKOM-AIR-LG-8-MB-B">ONOKOM-AIR-LG-8-MB-B</a>)
+</p>
+</td></tr>
+<tr>
+<td>Рекуператоры / вентиляция
+</td>
+<td><a href="https://wiki.wirenboard.com/wiki/VAKIO_City_Air_500" title="VAKIO City Air 500"> VAKIO City Air 250/500 </a> • <a href="https://wiki.wirenboard.com/wiki/Komfovent" title="Komfovent">Komfovent</a> • <a href="https://wiki.wirenboard.com/wiki/Breezart_Lux" title="Breezart Lux"> Breezart Lux / Aqua</a> • <a href="https://wiki.wirenboard.com/wiki/VENTMACHINE_Colibri_650_GTC" title="VENTMACHINE Colibri 650 GTC">  VENTMACHINE Colibri 650 GTC </a> • TION (<a href="https://wiki.wirenboard.com/wiki/ONOKOM-AIR-TN-1-MB-B" title="ONOKOM-AIR-TN-1-MB-B">ONOKOM-AIR-TN-1-MB-B</a>)
+</td></tr>
+<tr>
+<td>Контроллеры вентиляции и климата
+</td>
+<td><a href="https://wiki.wirenboard.com/wiki/Teplomash_KEV-BLOCK-MK" title="Teplomash KEV-BLOCK-MK">Тепломаш КЭВ-БЛОК-МК</a> • <a href="https://wiki.wirenboard.com/wiki/Drivent_V2" title="Drivent V2">Drivent V2</a>
+</td></tr>
+<tr>
+<td>Контроллеры холодильного оборудования
+</td>
+<td><a href="https://wiki.wirenboard.com/wiki/WB-REF-U_Carel_and_Eliwell_Modbus_Module" title="WB-REF-U Carel and Eliwell Modbus Module"> Carel BASIC(PYEZ)/EASY(PJEZ)</a> • <a href="https://wiki.wirenboard.com/wiki/Danfoss_EKC_204A1_(AK-CC210)" title="Danfoss EKC 204A1 (AK-CC210)"> Danfoss EKC 204A1/AK-CC 210</a> • <a href="https://wiki.wirenboard.com/wiki/Danfoss_EKC202B" title="Danfoss EKC202B"> Danfoss EKC 202B</a> • <a href="https://wiki.wirenboard.com/wiki/Danfoss_EKC202D" title="Danfoss EKC202D"> Danfoss EKC 202D</a> • <a href="https://wiki.wirenboard.com/wiki/WB-REF-DF-ERC21_Danfoss_ERC_21x_Modbus_Module" title="WB-REF-DF-ERC21 Danfoss ERC 21x Modbus Module"> Danfoss ERC 211/ERC 213/ERC 214</a> • <a href="https://wiki.wirenboard.com/wiki/Eliwell_IDPlus_974" title="Eliwell IDPlus 974"> Eliwell IDPlus 974</a>
+</td></tr>
+<tr>
+<td>Метеостанции
+</td>
+<td><a href="https://wiki.wirenboard.com/wiki/Sokol-m" title="Sokol-m"> Сокол-М</a>
+</td></tr>
+<tr>
+<td>Модули ввода-вывода
+</td>
+<td><a href="https://wiki.wirenboard.com/wiki/Wellpro_WP8026ADAM" title="Wellpro WP8026ADAM"> Wellpro WP8026ADAM</a> • <a href="https://wiki.wirenboard.com/wiki/Wellpro_WP8027ADAM" title="Wellpro WP8027ADAM"> Wellpro WP8027ADAM</a> • <a href="https://wiki.wirenboard.com/wiki/Wellpro_WP8028ADAM" title="Wellpro WP8028ADAM"> Wellpro WP8028ADAM</a> • <a href="https://wiki.wirenboard.com/wiki/Wellpro_WP9038ADAM" title="Wellpro WP9038ADAM"> Wellpro WP9038ADAM</a>
+</td></tr>
+<tr>
+<td>Модули реле
+</td>
+<td><a href="https://wiki.wirenboard.com/wiki/RD_DRB88" title="RD DRB88"> РД DRB88</a> • <a href="https://wiki.wirenboard.com/wiki/Rubetek_TZ78_Z-Wave_Relay" title="Rubetek TZ78 Z-Wave Relay"> Rubetek TZ78</a> • <a href="https://wiki.wirenboard.com/wiki/ICP_DAS_tM-P3R3" title="ICP DAS tM-P3R3"> ICP DAS tM-P3R3</a> • <a href="https://wiki.wirenboard.com/wiki/ICP_DAS_LC-103" title="ICP DAS LC-103"> ICP DAS LC-103</a> • <a href="https://wiki.wirenboard.com/wiki/Uniel_UCH-M111RX/0808" title="Uniel UCH-M111RX/0808"> Uniel UCH-M111RX/0808</a> • <a href="https://wiki.wirenboard.com/wiki/Uniel_UCH-M121RX/0808" title="Uniel UCH-M121RX/0808"> Uniel UCH-M121RX/0808</a>
+</td></tr>
+<tr>
+<td>Моторы для штор/Электрокарнизы
+</td>
+<td><a href="https://wiki.wirenboard.com/wiki/Akko_AM82" title="Akko AM82"> Akko AM82</a> • <a href="https://wiki.wirenboard.com/wiki/Akko_AT35EQ-X" title="Akko AT35EQ-X"> Akko AT35</a> • <a href="https://wiki.wirenboard.com/wiki/Dooya_DM35EQ" title="Dooya DM35EQ"> Dooya DM35EQ</a> • <a href="https://wiki.wirenboard.com/wiki/Dooya_DT82" title="Dooya DT82"> Dooya DT82</a> • <a href="https://wiki.wirenboard.com/wiki/WinDeco" title="WinDeco"> WinDeco</a> • <a href="https://wiki.wirenboard.com/wiki/Somfy_SDN" title="Somfy SDN"> Somfy SDN (Sonesse и Glydea Series)</a> • <a href="https://wiki.wirenboard.com/wiki/SunFlower_KT82TV" title="SunFlower KT82TV"> SunFlower KT82TV</a> • <a href="https://wiki.wirenboard.com/wiki/Somfy_RS485_RTS_transmitter" title="Somfy RS485 RTS transmitter"> Somfy RS485 RTS transmitter</a> • <a href="https://wiki.wirenboard.com/wiki/Dooya_and_Somfy_Wireless" title="Dooya and Somfy Wireless"> Беспроводные Dooya/Somfy</a> • <a href="https://wiki.wirenboard.com/wiki/Dauerhaft_CM5" title="Dauerhaft CM5"> Dauerhaft CM5</a> • <a href="https://wiki.wirenboard.com/wiki/Dauerhaft_Roll_35_45" title="Dauerhaft Roll 35 45"> Dauerhaft Roll 35/45</a> • <a href="https://wiki.wirenboard.com/wiki/Dauerhaft_Pro_RS485" title="Dauerhaft Pro RS485"> Dauerhaft PRO RS</a> • <a href="https://wiki.wirenboard.com/wiki/A-OK_AM68" title="A-OK AM68"> A-OK AM68 (LM100)</a> • <a href="https://wiki.wirenboard.com/wiki/A-OK_AM35" title="A-OK AM35"> A-OK AM35</a>
+</td></tr>
+<tr>
+<td>Панели управления
+</td>
+<td><a href="https://wiki.wirenboard.com/wiki/Cityron_PU-3" title="Cityron PU-3"> Cityron ПУ-3 (Modbus)</a> • <a href="https://wiki.wirenboard.com/wiki/Sonoff_NSPanel" title="Sonoff NSPanel"> Sonoff NSPanel (fw NXPanel)</a> • <a href="https://wiki.wirenboard.com/wiki/Ekf-proscreen" title="Ekf-proscreen"> EKF PRO-Screen</a> • <a href="https://wiki.wirenboard.com/wiki/Skirell_Panel" title="Skirell Panel"> Skirell Panel</a>
+</td></tr>
+<tr>
+<td>Системы защиты от протечек
+</td>
+<td><a href="https://wiki.wirenboard.com/wiki/KAPLESTOP" title="KAPLESTOP"> KAPLESTOP</a> • <a href="https://wiki.wirenboard.com/wiki/Ensystec" title="Ensystec"> Ensystec Leak Protect</a>
+</td></tr>
+<tr>
+<td>Считыватели карт (для СКУД)
+</td>
+<td><a href="https://wiki.wirenboard.com/wiki/Wiegand" title="Wiegand"> Wiegand</a>
+</td></tr>
+<tr>
+<td>Счётчики воды
+</td>
+<td><a href="https://wiki.wirenboard.com/wiki/Pulsar_Water" title="Pulsar Water"> Пульсар</a> • <a href="https://wiki.wirenboard.com/wiki/Pulsar_Water_M" title="Pulsar Water M"> Пульсар-М</a> • <a href="https://wiki.wirenboard.com/wiki/Using_Wiren_Board_with_pulsed_output_devices" title="Using Wiren Board with pulsed output devices"> Счётчики с импульсным выходом</a>
+</td></tr>
+<tr>
+<td>Счётчики тепла
+</td>
+<td><a href="https://wiki.wirenboard.com/wiki/Pulsar_Heat" title="Pulsar Heat"> Пульсар</a>
+</td></tr>
+<tr>
+<td>Счётчики электроэнергии
+</td>
+<td><a href="https://wiki.wirenboard.com/wiki/PD561Z-9SY" title="PD561Z-9SY">CSQ PD561Z-9SY</a> • <a href="https://wiki.wirenboard.com/wiki/Peacefair_PZEM-016" title="Peacefair PZEM-016"> Peacefair PZEM-016</a> • <a href="https://wiki.wirenboard.com/wiki/SDM120M" title="SDM120M"> Eastron SDM120M</a> • <a href="https://wiki.wirenboard.com/wiki/SDM220M" title="SDM220M"> Eastron SDM220M</a> • <a href="https://wiki.wirenboard.com/wiki/Mercury_200" title="Mercury 200"> Меркурий 200</a> • <a href="https://wiki.wirenboard.com/wiki/Mercury_201" title="Mercury 201"> Меркурий 201</a> • <a href="https://wiki.wirenboard.com/wiki/Mercury_203.2T" title="Mercury 203.2T"> Меркурий 203.2T</a> • <a href="https://wiki.wirenboard.com/wiki/Mercury_206" title="Mercury 206"> Меркурий 206</a> • <a href="https://wiki.wirenboard.com/wiki/Mercury_230" title="Mercury 230"> Меркурий 230</a> • <a href="https://wiki.wirenboard.com/wiki/Mercury_231" title="Mercury 231"> Меркурий 231</a> • <a href="https://wiki.wirenboard.com/wiki/Mercury_234" title="Mercury 234"> Меркурий 234</a> • <a href="https://wiki.wirenboard.com/wiki/Mercury_236" title="Mercury 236"> Меркурий 236</a> •  <a href="https://wiki.wirenboard.com/wiki/Milur_104" title="Milur 104">  Милур 104</a> •  <a href="https://wiki.wirenboard.com/wiki/Milur_105" title="Milur 105">  Милур 105</a> •  <a href="https://wiki.wirenboard.com/wiki/Milur_107" title="Milur 107">  Милур 107</a> • <a href="https://wiki.wirenboard.com/wiki/Milur_305" title="Milur 305">  Милур 305</a> • <a href="https://wiki.wirenboard.com/wiki/Milur_307" title="Milur 307"> Милур 307</a> • <a href="https://wiki.wirenboard.com/wiki/NEVA_MT_113" title="NEVA MT 113"> Нева МТ 113</a> • <a href="https://wiki.wirenboard.com/wiki/NEVA_MT_123" title="NEVA MT 123"> Нева МТ 123</a> • <a href="https://wiki.wirenboard.com/wiki/NEVA_MT_124" title="NEVA MT 124"> Нева МТ 124</a> • <a href="https://wiki.wirenboard.com/wiki/NEVA_MT_323" title="NEVA MT 323"> Нева МТ 323</a> • <a href="https://wiki.wirenboard.com/wiki/NEVA_MT_324" title="NEVA MT 324"> Нева МТ 324</a> • <a href="https://wiki.wirenboard.com/wiki/Energomera_CE301" title="Energomera CE301"> Энергомера CE301</a> • <a href="https://wiki.wirenboard.com/wiki/Energomera_CE102M" title="Energomera CE102M"> Энергомера CE102M</a> • <a href="https://wiki.wirenboard.com/wiki/Energomera_CE303" title="Energomera CE303"> Энергомера CE303</a> • <a href="https://wiki.wirenboard.com/wiki/Energomera_CE308" title="Energomera CE308"> Энергомера CE308</a> • <a href="https://wiki.wirenboard.com/wiki/Milur_107S" title="Milur 107S"> Милур 107S</a>
+</td></tr>
+<tr>
+<td>Термостаты
+</td>
+<td><a href="https://wiki.wirenboard.com/wiki/BAC-002ALN" title="BAC-002ALN"> BAC-002ALN</a> • <a href="https://wiki.wirenboard.com/wiki/BAC-6000ALN" title="BAC-6000ALN"> BAC-6000ALN</a> • <a href="https://wiki.wirenboard.com/wiki/BAC-6000ELNW" title="BAC-6000ELNW"> BAC-6000ELNW</a> • <a href="https://wiki.wirenboard.com/wiki/BHT-6000_Series" title="BHT-6000 Series"> BHT-6000 Series</a> • <a href="https://wiki.wirenboard.com/wiki/BHT-006_Series" title="BHT-006 Series"> BHT-006 Series</a> • <a href="https://wiki.wirenboard.com/wiki/Heatit_Z-TEMP2_Z-Wave_Thermostat" title="Heatit Z-TEMP2 Z-Wave Thermostat"> Heatit Z-TEMP2</a> • <a href="https://wiki.wirenboard.com/wiki/Siemens_RDF302" title="Siemens RDF302"> Siemens RDF302</a> • <a href="https://wiki.wirenboard.com/wiki/Ridan-greencon-r" title="Ridan-greencon-r"> Ridan Greencon-R</a> • <a href="https://wiki.wirenboard.com/wiki/Welrok_az" title="Welrok az"> Welrok az</a> • <a href="https://wiki.wirenboard.com/wiki/ENGO_EFAN" title="ENGO EFAN"> ENGO EFAN</a>
+</td></tr>
+<tr>
+<td>Управление двигателями (преобразователи частоты)
+</td>
+<td><a href="https://wiki.wirenboard.com/wiki/Vacon_10" title="Vacon 10"> Vacon/Danfoss 10</a> • <a href="https://wiki.wirenboard.com/wiki/Danfoss_VLT_Microdrive_FC51" title="Danfoss VLT Microdrive FC51"> Danfoss VLT Microdrive FC51</a> • <a href="https://wiki.wirenboard.com/wiki/T13-750W-12-H_Modbus_Frequency_Converter" title="T13-750W-12-H Modbus Frequency Converter"> T13-400W-12-H/T13-750W-12-H</a>
+</td></tr>
+<tr>
+<td>Управление шаговыми двигателями
+</td>
+<td><a href="https://wiki.wirenboard.com/wiki/OVEN_MST-24" title="OVEN MST-24"> Овен (Meyertec) MST-24</a> • <a href="https://wiki.wirenboard.com/wiki/NT60_stepper_motor_driver" title="NT60 stepper motor driver"> Rtelligent NT60</a>
+</td></tr>
+<tr>
+<td>Прочее
+</td>
+<td><a href="https://wiki.wirenboard.com/wiki/Tasmota" title="Tasmota">Tasmota</a> • <a href="https://wiki.wirenboard.com/wiki/ESPHome" title="ESPHome">ESPHome</a> • <a href="https://wiki.wirenboard.com/wiki/%D0%9E%D0%B2%D0%B5%D0%BD_%D0%A1%D0%9C%D0%982" title="Овен СМИ2"> ОВЕН СМИ2-М</a>
+</td></tr>
+<tr>
+<th colspan="2">Устройства с аналоговым или цифровым выходом <div class="anchor" id="others"></div>
+</th></tr>
+<tr>
+<td>Низковольтная нагрузка
+</td>
+<td><a href="https://wiki.wirenboard.com/wiki/Relay_connecting" title="Relay connecting"> Реле с управляющим напряжением 12…24 В</a> • <a href="https://wiki.wirenboard.com/wiki/LED_connecting" title="LED connecting"> Светодиоды</a> • <a href="https://wiki.wirenboard.com/wiki/Fan_connecting" title="Fan connecting"> Низковольтные вентиляторы</a> • <a href="https://wiki.wirenboard.com/wiki/Signal_lamp_connecting" title="Signal lamp connecting"> Низковольтные сигнальные лампы</a>
+</td></tr>
+<tr>
+<td>Датчики с аналоговым выходом
+</td>
+<td><a href="https://wiki.wirenboard.com/wiki/AnalogSensors_connecting" title="AnalogSensors connecting"> Датчики температуры, давления и другие, имеющие на выходе ток или напряжение</a>
+</td></tr>
+<tr>
+<td>Счётчики с импульсным выходом
+</td>
+<td><a href="https://wiki.wirenboard.com/wiki/Using_Wiren_Board_with_pulsed_output_devices" title="Using Wiren Board with pulsed output devices"> Счётчики электроэнергии, воды, тепла и другие с импульсным выходом</a>
+</td></tr>
+<tr>
+<td>Устройства с выходом «открытый коллектор»
+</td>
+<td><a href="https://wiki.wirenboard.com/wiki/OpenCollector_connecting" title="OpenCollector connecting"> Устройства с выходом «открытый коллектор»</a>
+</td></tr>
+<tr>
+<td>Устройства с питанием 220 В
+</td>
+<td><a href="https://wiki.wirenboard.com/wiki/220VoltDevices_connection" title="220VoltDevices connection"> Лампы</a> • <a href="https://wiki.wirenboard.com/wiki/220VoltDevices_connection" title="220VoltDevices connection"> Контакторы и другое оборудование с питанием от 220 В</a>
+</td></tr>
+</tbody></table>
+<hr>
+<table class="wikitable" style="max-width:1200px">
+<caption>Поддерживаемые, но непроверенные в лаборатории Wiren Board устройства сторонних производителей (шаблоны от сообщества)
+</caption>
+<tbody><tr>
+<td>Опрос датчиков и работа с устройствами (в базовой комплектации)
+</td>
+<td><a href="https://wiki.wirenboard.com/wiki/DMX" title="DMX"> DMX-512 </a>
+</td></tr>
+<tr>
+<td>Адаптеры протоколов
+</td>
+<td><a href="https://wiki.wirenboard.com/wiki/HDL_KNX-DALI_Gateway" title="HDL KNX-DALI Gateway"> HDL KNX-DALI Gateway M/DALI.1</a>
+</td></tr>
+<tr>
+<td style="min-width: 250px">Датчики климата
+</td>
+<td><a href="https://wiki.wirenboard.com/wiki/RLDA_NL-3DPAS-M" title="RLDA NL-3DPAS-M"> RLDA NL-3DPAS-M</a> • <a href="https://wiki.wirenboard.com/wiki/RLDA_NL-1S111" title="RLDA NL-1S111"> RLDA NL-1S111</a> • <a href="https://wiki.wirenboard.com/wiki/Relsib_DVT-05" title="Relsib DVT-05">Рэлсиб ДВТ-05</a> • <a href="https://wiki.wirenboard.com/wiki/XY-MD0X" title="XY-MD0X"> XY-MD03/XY-MD04</a>
+</td></tr>
+<tr>
+<td>Датчики расстояния
+</td>
+<td><a href="https://wiki.wirenboard.com/wiki/WitMotion_WT53R-485" title="WitMotion WT53R-485"> WitMotion WT53R-485</a>
+</td></tr>
+<tr>
+<td>Диммеры
+</td>
+<td><a href="https://wiki.wirenboard.com/wiki/RD_DDL84R-V" title="RD DDL84R-V"> РД DDL84R-V</a>
+</td></tr>
+<tr>
+<td>Источники питания и ИБП
+</td>
+<td><a href="https://wiki.wirenboard.com/wiki/Multiplex_UPS" title="Multiplex UPS"> ИБП Импульс Мультиплекс</a>
+</td></tr>
+<tr>
+<td>Конвекторы
+</td>
+<td><a href="https://wiki.wirenboard.com/wiki/Varmann_QTherm" title="Varmann QTherm"> Varmann QTherm</a>
+</td></tr>
+<tr>
+<td>Рекуператоры / вентиляция
+</td>
+<td><a href="https://wiki.wirenboard.com/wiki/VAKIO_Base_Smart" title="VAKIO Base Smart"> Рекуператор VAKIO Base Smart </a> • <a href="https://wiki.wirenboard.com/wiki/SOFFIO_Primo_RCS-350-P" title="SOFFIO Primo RCS-350-P">ПВУ Royal Clima Soffio Primo RCS-350-P</a> • <a href="https://wiki.wirenboard.com/wiki/Royal_Clima_RCV" title="Royal Clima RCV">Royal Clima VENTO</a> • <a href="https://wiki.wirenboard.com/wiki/Systemair_Corrigo" title="Systemair Corrigo"> Systemair Corrigo</a> • <a href="https://wiki.wirenboard.com/wiki/Vakio_OpenAir" title="Vakio OpenAir">Приточный клапан Vakio OpenAir</a>
+</td></tr>
+<tr>
+<td>Метеостанции
+</td>
+<td><a href="https://wiki.wirenboard.com/wiki/Netatmo_Urban_Weather_Station" title="Netatmo Urban Weather Station"> Netatmo Urban Weather Station</a>
+</td></tr>
+<tr>
+<td>Коллекторы датчиков
+</td>
+<td><a href="https://wiki.wirenboard.com/wiki/R4DCB08" title="R4DCB08">R4DCB08</a>
+</td></tr>
+<tr>
+<td>Контроллеры вентиляции и климата
+</td>
+<td><a href="https://wiki.wirenboard.com/wiki/Mautomatics_JL204C5" title="Mautomatics JL204C5">Mautomatics JL204C5 (Breezart 550 Lux)</a> • <a href="https://wiki.wirenboard.com/wiki/GTC_Syberia_5" title="GTC Syberia 5"> GTC (General Thermo Controllers) Syberia 5.0</a> • <a href="https://wiki.wirenboard.com/wiki/SystemAir_VR_300" title="SystemAir VR 300"> SystemAir VR 300</a> • <a href="https://wiki.wirenboard.com/wiki/Royal_Clima_MACS-RC-420MB" title="Royal Clima MACS-RC-420MB"> Royal Clima MACS-RC-420MB</a> • <a href="https://wiki.wirenboard.com/wiki/Turkov_Zenit_HECO_550E_Modbus_Air_Handling_Unit" title="Turkov Zenit HECO 550E Modbus Air Handling Unit">Turkov Zenit HECO 550E</a> • <a href="https://wiki.wirenboard.com/wiki/Zentec_Z031" title="Zentec Z031"> Zentec Z031</a>
+</td></tr>
+<tr>
+<td>Контроллеры ДГУ
+</td>
+<td><a href="https://wiki.wirenboard.com/wiki/SDMO_APM303" title="SDMO APM303">SDMO APM303</a>
+</td></tr>
+<tr>
+<td>Модули реле
+</td>
+<td><a href="https://wiki.wirenboard.com/wiki/R4D3C32" title="R4D3C32"> R4D3C32</a>
+</td></tr>
+<tr>
+<td>Преобразователи частоты
+</td>
+<td><a href="https://wiki.wirenboard.com/wiki/ERMAN_ER-G-220-02" title="ERMAN ER-G-220-02">ERMAN ER-G-220-02</a> • <a href="https://wiki.wirenboard.com/wiki/ERMAN_ER-G-220-03" title="ERMAN ER-G-220-03">ERMAN ER-G-220-03</a>
+</td></tr>
+<tr>
+<td>Счётчики воды
+</td>
+<td><a href="https://wiki.wirenboard.com/wiki/SVD-15" title="SVD-15"> Элехант СВД-15</a> • <a href="https://wiki.wirenboard.com/wiki/SVD-20" title="SVD-20"> Элехант СВД-20</a>
+</td></tr>
+<tr>
+<td>Счётчики электроэнергии
+</td>
+<td><a href="https://wiki.wirenboard.com/wiki/Mercury_204" title="Mercury 204"> Меркурий 204</a> • <a href="https://wiki.wirenboard.com/wiki/Mercury_208" title="Mercury 208"> Меркурий 208</a> •<a href="https://wiki.wirenboard.com/wiki/Mercury_238" title="Mercury 238"> Меркурий 238</a> • <a href="https://wiki.wirenboard.com/wiki/ABB_SCU100" title="ABB SCU100"> ABB SCU100 </a> • <a href="https://wiki.wirenboard.com/wiki/WAVIoT_Fobos_3T" title="WAVIoT Fobos 3T"> Waviot Фобос 3T </a>
+</td></tr>
+<tr>
+<td>Счётчики тепла
+</td>
+<td><a href="https://wiki.wirenboard.com/wiki/VIS.T2-TC" title="VIS.T2-TC"> ВИС.Т2-ТС</a> • <a href="https://wiki.wirenboard.com/wiki/TMK-N" title="TMK-N"> Тепловычислитель ТМК-Н</a>
+</td></tr>
+<tr>
+<td>Термостаты
+</td>
+<td><a href="https://wiki.wirenboard.com/wiki/Hessway_Thermostat" title="Hessway Thermostat"> Hessway</a> • <a href="https://wiki.wirenboard.com/wiki/SHOJZJ_TY-BAC009" title="SHOJZJ TY-BAC009"> SHOJZJ TY-BAC009</a>
+</td></tr>
+<tr>
+<td>Увлажнители
+</td>
+<td><a href="https://wiki.wirenboard.com/wiki/CAREL_Humisonic" title="CAREL Humisonic"> CAREL Humisonic</a> • <a href="https://wiki.wirenboard.com/wiki/Xiaomi_Humidifier" title="Xiaomi Humidifier"> Xiaomi Humidifier</a>
+</td></tr>
+<tr>
+<td>Прочее
+</td>
+<td><a href="https://wiki.wirenboard.com/wiki/DIY" title="DIY">DIY</a> • <a href="https://wiki.wirenboard.com/wiki/Shelly_UNI" title="Shelly UNI">Shelly UNI</a> • <a href="https://wiki.wirenboard.com/wiki/Renke" title="Renke"> Renke RS-LDO-N01-2</a>
+</td></tr>
+</tbody></table>
+
+
+
+
+
+</div>
+<div class="printfooter" data-nosnippet="">Источник — <a dir="ltr" href="https://wiki.wirenboard.com/wiki/index.php?title=Scada-fuxa&amp;oldid=113794">https://wiki.wirenboard.com/wiki/index.php?title=Scada-fuxa&amp;oldid=113794</a></div></div>
+</article>
+</main>
+</body>
+</html>
